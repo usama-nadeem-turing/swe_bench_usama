@@ -44,7 +44,8 @@ def generate_outputs_batch(instances, model, tokenizer, max_token_limit, logger)
     formatted_prompts = []
     for prompt in prompts:
         # Use the exact same format as in training
-        formatted_prompt = f"<s>[INST] {prompt.strip()} [/INST]"
+        #formatted_prompt = f"<s>[INST] {prompt.strip()} [/INST]"
+        formatted_prompt = prompt.strip()
         formatted_prompts.append(formatted_prompt)
     
     # Tokenize and truncate prompts
