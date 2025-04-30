@@ -103,8 +103,8 @@ Now, here's your task:
         
         # Extract patch from the assistant response
         #patch = extract_patch(assistant_response)
-        #patch = full_output
-        patch = extract_patch(full_output)
+        patch = full_output
+        #patch = extract_patch(full_output)
         results[instance_ids[i]] = patch
     
     return results
@@ -211,14 +211,14 @@ def main():
     logger.info(f"Loading model...")
     
     # Prepare model loading arguments
-    max_seq_length = 30000
+    max_seq_length = 60000
     model_max_length = 16384  # CodeLlama Python 7B max position embedding length
 
     model_kwargs = {
         "torch_dtype": torch.bfloat16,  # Use half-precision to save memory
         "device_map": "auto",
         "attn_implementation": "flash_attention_2" if use_flash_attention else "eager",
-        "rope_scaling": {"type": "linear", "factor": max_seq_length / model_max_length},
+        #"rope_scaling": {"type": "linear", "factor": max_seq_length / model_max_length},
         "use_cache": False,
         "trust_remote_code": True,
     }
@@ -290,7 +290,7 @@ def main():
                 raise e  # Re-raise the original error
     
     # CodeLlama context window
-    max_token_limit = 20000  # ~20k tokens
+    max_token_limit = 60000  # ~20k tokens
     logger.info(f"Using maximum token limit: {max_token_limit}")
     
     # Output directory
@@ -307,7 +307,7 @@ def main():
     logger.info(f"Total instances in test split: {num_instances}")
     
     if args.dry_run:
-        instances = instances[:4]  # Limit to 4 instances for dry run
+        instances = instances[:1]  # Limit to 4 instances for dry run
         num_instances = len(instances)
         logger.info(f"Limited to {num_instances} instances for dry run")
     
