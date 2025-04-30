@@ -86,7 +86,9 @@ def generate_outputs_batch(instances, model, tokenizer, max_token_limit, logger)
             assistant_response = full_output[len(input_text):].strip()
         
         # Extract patch from the assistant response
-        patch = extract_patch(assistant_response)
+        #patch = extract_patch(assistant_response)
+        #patch = full_output
+        patch = extract_patch(full_output)
         results[instance_ids[i]] = patch
     
     return results
@@ -169,10 +171,16 @@ def main():
     logger.info(f"Loading model...")
     
     # Prepare model loading arguments
+    max_seq_length = 30000
+    model_max_length = 16384  # CodeLlama Python 7B max position embedding length
+
     model_kwargs = {
-        "torch_dtype": torch.float16,  # Use half-precision to save memory
+        "torch_dtype": torch.bfloat16,  # Use half-precision to save memory
         "device_map": "auto",
         "attn_implementation": "flash_attention_2" if use_flash_attention else "eager",
+        "rope_scaling": {"type": "linear", "factor": max_seq_length / model_max_length},
+        "use_cache": False,
+        "trust_remote_code": True,
     }
     
     # Add optional arguments
@@ -304,4 +312,28 @@ def main():
 if __name__ == "__main__":
     main()
 
+
     #/home/jupyter/.cache/huggingface/token
+"""
+import json
+
+# Load your raw patches
+with open("usama.json") as f:
+    raw_patches = json.load(f)
+
+# Prepare in correct format
+formatted_predictions = {}
+
+for instance_id, patch_text in raw_patches.items():
+    formatted_predictions[instance_id] = {
+        "instance_id": instance_id,                # 🛠 ADD THIS LINE
+        "model_patch": patch_text,
+        "model_name_or_path": "your_model_name"     # e.g., "CodeLlama-7b" or anything you want
+    }
+
+# Save the formatted output
+with open("formatted_predictions.json", "w") as f:
+    json.dump(formatted_predictions, f)
+
+"""
+
