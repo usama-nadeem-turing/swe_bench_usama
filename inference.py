@@ -45,12 +45,7 @@ def generate_outputs_batch(instances, model, tokenizer, max_token_limit, logger)
     if golden:
         golden_example = f"""Here's an example of how to fix a bug:
 
-Problem: {golden['problem']}
-
-Original code:
-```python
-{golden['original_code']}
-```
+Problem and Original code: {golden['problem']}
 
 Fixed code:
 ```python
@@ -163,7 +158,6 @@ def main():
     # Format golden example
     golden_example = {
         "problem": golden_instance["text"],
-        "original_code": golden_instance.get("original_code", ""),
         "fixed_code": golden_instance.get("patch", "")
     }
     
