@@ -8,6 +8,7 @@ import argparse
 import logging
 import time
 from datetime import datetime
+import re
 
 # Set up logging
 def setup_logging(log_level=logging.INFO):
