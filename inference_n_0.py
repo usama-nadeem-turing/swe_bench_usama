@@ -71,28 +71,12 @@ def generate_outputs_batch(instances, model, tokenizer, max_token_limit, logger)
     prompts = [instance["text"] for instance in instances]
     instance_ids = [instance["instance_id"] for instance in instances]
     
-    # Get golden example from the function attribute
-    golden = getattr(generate_outputs_batch, 'golden_example', None)
-    if golden:
-        golden_example = f"""Here's an example of how to fix a bug:
-
-Problem and Original code: {golden['problem']}
-
-Fixed code:
-```python
-{golden['fixed_code']}
-```
-
-Now, here's your task:
-"""
-    else:
-        golden_example = ""
-    
     # Format prompts using Llama2 instruct template (same as in training)
     formatted_prompts = []
     for prompt in prompts:
         # Use the exact same format as in training
-        formatted_prompt = f"{golden_example}\n{prompt.strip()}"
+        #formatted_prompt = f"<s>[INST] {prompt.strip()} [/INST]"
+        formatted_prompt = prompt.strip()
         formatted_prompts.append(formatted_prompt)
     
     # Tokenize and truncate prompts
@@ -108,7 +92,7 @@ Now, here's your task:
     with torch.no_grad():
         outputs = model.generate(
             **batch_inputs,
-            max_length=batch_inputs["input_ids"].shape[1] + 5000,  # Allow sufficient space for generation
+            max_length=batch_inputs["input_ids"].shape[1] + 1000,  # Allow sufficient space for generation
             do_sample=False,  # Deterministic generation
             num_return_sequences=1,
             pad_token_id=tokenizer.eos_token_id
@@ -134,8 +118,8 @@ Now, here's your task:
         
         # Extract patch from the assistant response
         #patch = extract_patch(assistant_response)
-        patch = full_output
-        #patch = extract_patch(full_output)
+        #patch = full_output
+        patch = extract_patch(full_output)
         results[instance_ids[i]] = patch
     
     return results
@@ -147,7 +131,9 @@ def main():
     parser.add_argument("--log_level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", 
                         help="Set the logging level")
     parser.add_argument("--dry_run", action="store_true", help="Only process 4 examples for testing")
+    #parser.add_argument("--model", type=str, default="codellama/CodeLlama-7b-hf",
     parser.add_argument("--model", type=str, default="meta-llama/CodeLlama-7b-Python-hf",
+                        
                        help="Model ID from Hugging Face or local path to model")
     parser.add_argument("--use_torch_weights", action="store_true", 
                        help="Use PyTorch weights (*.bin) instead of safetensors (for compatibility)")
@@ -155,12 +141,10 @@ def main():
                        help="Use low CPU memory usage when loading the model")
     parser.add_argument("--trust_remote_code", action="store_true",
                        help="Allow models that require custom code to be loaded")
-    parser.add_argument("--golden_example_id", type=str, default=None,
-                       help="Instance ID of the golden example to use")
     args = parser.parse_args()
+    
 
     args.dry_run = True
-    #args.dry_run = False
 
     # Setup logging
     logger = setup_logging(getattr(logging, args.log_level))
@@ -170,31 +154,6 @@ def main():
         logger.info("DRY RUN MODE: Only processing 4 examples")
         
     start_time = time.time()
-    
-    # Load dataset first to get golden example
-    dataset_name = "princeton-nlp/SWE-bench_Lite_bm25_13K"
-    logger.info(f"Loading dataset: {dataset_name} (test split only)")
-    dataset = load_dataset(dataset_name, split="test")
-    
-    # Get golden example
-    if args.golden_example_id:
-        golden_instance = next((x for x in dataset if x["instance_id"] == args.golden_example_id), None)
-        if not golden_instance:
-            logger.error(f"Golden example with ID {args.golden_example_id} not found")
-            raise ValueError(f"Golden example with ID {args.golden_example_id} not found")
-    else:
-        # Use the first instance as golden example
-        golden_instance = dataset[0]
-        logger.info(f"Using instance {golden_instance['instance_id']} as golden example")
-    
-    # Format golden example
-    golden_example = {
-        "problem": golden_instance["text"],
-        "fixed_code": golden_instance.get("patch", "")
-    }
-    
-    # Make golden example available to generate_outputs_batch
-    generate_outputs_batch.golden_example = golden_example
     
     # Check if flash attention 2 is available
     try:
@@ -243,14 +202,14 @@ def main():
     logger.info(f"Loading model...")
     
     # Prepare model loading arguments
-    max_seq_length = 60000
+    max_seq_length = 30000
     model_max_length = 16384  # CodeLlama Python 7B max position embedding length
 
     model_kwargs = {
         "torch_dtype": torch.bfloat16,  # Use half-precision to save memory
         "device_map": "auto",
         "attn_implementation": "flash_attention_2" if use_flash_attention else "eager",
-        #"rope_scaling": {"type": "linear", "factor": max_seq_length / model_max_length},
+        "rope_scaling": {"type": "linear", "factor": max_seq_length / model_max_length},
         "use_cache": False,
         "trust_remote_code": True,
     }
@@ -322,8 +281,13 @@ def main():
                 raise e  # Re-raise the original error
     
     # CodeLlama context window
-    max_token_limit = 60000  # ~20k tokens
+    max_token_limit = 20000  # ~20k tokens
     logger.info(f"Using maximum token limit: {max_token_limit}")
+    
+    # Load only the test split of the SWE-bench dataset
+    dataset_name = "princeton-nlp/SWE-bench_Lite_bm25_13K"
+    logger.info(f"Loading dataset: {dataset_name} (test split only)")
+    dataset = load_dataset(dataset_name, split="test")
     
     # Output directory
     output_dir = "swe_bench_results"
@@ -339,7 +303,7 @@ def main():
     logger.info(f"Total instances in test split: {num_instances}")
     
     if args.dry_run:
-        instances = instances[:1]  # Limit to 4 instances for dry run
+        instances = instances[:4]  # Limit to 4 instances for dry run
         num_instances = len(instances)
         logger.info(f"Limited to {num_instances} instances for dry run")
     
@@ -403,4 +367,3 @@ with open("formatted_predictions.json", "w") as f:
     json.dump(formatted_predictions, f)
 
 """
-
