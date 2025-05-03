@@ -72,18 +72,23 @@ def generate_outputs_batch(instances, model, tokenizer, max_token_limit, logger)
     prompts = [instance["text"] for instance in instances]
     instance_ids = [instance["instance_id"] for instance in instances]
     
-    # Get golden example from the function attribute
-    golden = getattr(generate_outputs_batch, 'golden_example', None)
-    if golden:
-        golden_example = f"""Here's an example of how to fix a bug:
+    # Get golden examples from the function attribute
+    golden_examples = getattr(generate_outputs_batch, 'golden_examples', None)
+    if golden_examples:
+        examples_text = ""
+        for i, golden in enumerate(golden_examples, 1):
+            examples_text += f"""Example {i}:
 
 Problem and Original code: {golden['problem']}
 
 Fixed code:
-```python
-{golden['fixed_code']}
-```
 
+{golden['fixed_code']}
+
+"""
+        golden_example = f"""Here are some examples of how to fix bugs:
+
+{examples_text}
 Now, here's your task:
 """
     else:
@@ -109,7 +114,7 @@ Now, here's your task:
     with torch.no_grad():
         outputs = model.generate(
             **batch_inputs,
-            max_length=batch_inputs["input_ids"].shape[1] + 5000,  # Allow sufficient space for generation
+            max_length=batch_inputs["input_ids"].shape[1] + 1000,  # Allow sufficient space for generation
             do_sample=False,  # Deterministic generation
             num_return_sequences=1,
             pad_token_id=tokenizer.eos_token_id
@@ -122,7 +127,8 @@ Now, here's your task:
         input_text = formatted_prompts[i]
         
         # Decode the full output
-        full_output = tokenizer.decode(output, skip_special_tokens=True)
+        #full_output = tokenizer.decode(output, skip_special_tokens=True)
+        full_output = tokenizer.decode(output, skip_special_tokens=False)
         
         # Find where the assistant response starts - after the [/INST] tag
         assistant_start = full_output.find("[/INST]")
@@ -156,8 +162,8 @@ def main():
                        help="Use low CPU memory usage when loading the model")
     parser.add_argument("--trust_remote_code", action="store_true",
                        help="Allow models that require custom code to be loaded")
-    parser.add_argument("--golden_example_id", type=str, default=None,
-                       help="Instance ID of the golden example to use")
+    parser.add_argument("--golden_example_ids", type=str, nargs='+', default=None,
+                       help="Instance IDs of the golden examples to use")
     args = parser.parse_args()
 
     args.dry_run = True
@@ -172,30 +178,35 @@ def main():
         
     start_time = time.time()
     
-    # Load dataset first to get golden example
+    # Load dataset first to get golden examples
     dataset_name = "princeton-nlp/SWE-bench_Lite_bm25_13K"
     logger.info(f"Loading dataset: {dataset_name} (test split only)")
     dataset = load_dataset(dataset_name, split="test")
     
-    # Get golden example
-    if args.golden_example_id:
-        golden_instance = next((x for x in dataset if x["instance_id"] == args.golden_example_id), None)
-        if not golden_instance:
-            logger.error(f"Golden example with ID {args.golden_example_id} not found")
-            raise ValueError(f"Golden example with ID {args.golden_example_id} not found")
+    # Get golden examples
+    golden_instances = []
+    if args.golden_example_ids:
+        for example_id in args.golden_example_ids:
+            golden_instance = next((x for x in dataset if x["instance_id"] == example_id), None)
+            if not golden_instance:
+                logger.error(f"Golden example with ID {example_id} not found")
+                raise ValueError(f"Golden example with ID {example_id} not found")
+            golden_instances.append(golden_instance)
     else:
-        # Use the first instance as golden example
-        golden_instance = dataset[0]
-        logger.info(f"Using instance {golden_instance['instance_id']} as golden example")
+        # Use the first two instances as golden examples
+        golden_instances = dataset[:2]
+        logger.info(f"Using instances {golden_instances[0]['instance_id']} and {golden_instances[1]['instance_id']} as golden examples")
     
-    # Format golden example
-    golden_example = {
-        "problem": golden_instance["text"],
-        "fixed_code": golden_instance.get("patch", "")
-    }
+    # Format golden examples
+    golden_examples = []
+    for instance in golden_instances:
+        golden_examples.append({
+            "problem": instance["text"],
+            "fixed_code": instance.get("patch", "")
+        })
     
-    # Make golden example available to generate_outputs_batch
-    generate_outputs_batch.golden_example = golden_example
+    # Make golden examples available to generate_outputs_batch
+    generate_outputs_batch.golden_examples = golden_examples
     
     # Check if flash attention 2 is available
     try:
@@ -361,14 +372,14 @@ def main():
         
         # Save incrementally to avoid data loss in case of interruption
         if i % (args.batch_size * 10) == 0 or i + args.batch_size >= num_instances:
-            temp_file = os.path.join(output_dir, "swe_bench_results_partial.json")
+            temp_file = os.path.join(output_dir, "swe_bench_results_partial_N_2.json")
             logger.info(f"Saving intermediate results to {temp_file}")
             with open(temp_file, "w") as f:
                 json.dump(results, f, indent=2)
     
     # Save final results
     suffix = "_dry_run" if args.dry_run else ""
-    final_file = os.path.join(output_dir, f"swe_bench_results{suffix}.json")
+    final_file = os.path.join(output_dir, f"swe_bench_results_N_2{suffix}.json")
     logger.info(f"Saving final results to {final_file}")
     with open(final_file, "w") as f:
         json.dump(results, f, indent=2)
