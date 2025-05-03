@@ -166,8 +166,8 @@ def main():
                        help="Instance IDs of the golden examples to use")
     args = parser.parse_args()
 
-    args.dry_run = True
-    #args.dry_run = False
+    #args.dry_run = True
+    args.dry_run = False
 
     # Setup logging
     logger = setup_logging(getattr(logging, args.log_level))
