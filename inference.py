@@ -141,8 +141,8 @@ Now, here's your task:
         
         # Extract patch from the assistant response
         #patch = extract_patch(assistant_response)
-        patch = full_output
-        #patch = extract_patch(full_output)
+        #patch = full_output
+        patch = extract_patch(full_output)
         results[instance_ids[i]] = patch
     
     return results
