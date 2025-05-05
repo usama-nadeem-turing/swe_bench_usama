@@ -72,23 +72,26 @@ def generate_outputs_batch(instances, model, tokenizer, max_token_limit, logger)
     prompts = [instance["text"] for instance in instances]
     instance_ids = [instance["instance_id"] for instance in instances]
     
-    # Get golden examples from the function attribute
-    golden_examples = getattr(generate_outputs_batch, 'golden_examples', None)
-    if golden_examples:
-        examples_text = ""
-        for i, golden in enumerate(golden_examples, 1):
-            examples_text += f"""Example {i}:
+    # Get golden example from the function attribute
+    golden = getattr(generate_outputs_batch, 'golden_example', None)
+    golden_2 = getattr(generate_outputs_batch, 'golden_example_2', None)
+    if golden and golden_2:
+        golden_example = f"""Here are two examples of how to fix bugs:
 
+Example 1:
 Problem and Original code: {golden['problem']}
 
 Fixed code:
 
 {golden['fixed_code']}
 
-"""
-        golden_example = f"""Here are some examples of how to fix bugs:
+Example 2:
+Problem and Original code: {golden_2['problem']}
 
-{examples_text}
+Fixed code:
+
+{golden_2['fixed_code']}
+
 Now, here's your task:
 """
     else:
@@ -162,12 +165,12 @@ def main():
                        help="Use low CPU memory usage when loading the model")
     parser.add_argument("--trust_remote_code", action="store_true",
                        help="Allow models that require custom code to be loaded")
-    parser.add_argument("--golden_example_ids", type=str, nargs='+', default=None,
-                       help="Instance IDs of the golden examples to use")
+    parser.add_argument("--golden_example_id", type=str, default=None,
+                       help="Instance ID of the golden example to use")
     args = parser.parse_args()
 
-    #args.dry_run = True
-    args.dry_run = False
+    args.dry_run = True
+    #args.dry_run = False
 
     # Setup logging
     logger = setup_logging(getattr(logging, args.log_level))
@@ -178,35 +181,37 @@ def main():
         
     start_time = time.time()
     
-    # Load dataset first to get golden examples
+    # Load dataset first to get golden example
     dataset_name = "princeton-nlp/SWE-bench_Lite_bm25_13K"
     logger.info(f"Loading dataset: {dataset_name} (test split only)")
     dataset = load_dataset(dataset_name, split="test")
     
-    # Get golden examples
-    golden_instances = []
-    if args.golden_example_ids:
-        for example_id in args.golden_example_ids:
-            golden_instance = next((x for x in dataset if x["instance_id"] == example_id), None)
-            if not golden_instance:
-                logger.error(f"Golden example with ID {example_id} not found")
-                raise ValueError(f"Golden example with ID {example_id} not found")
-            golden_instances.append(golden_instance)
+    # Get golden example
+    if args.golden_example_id:
+        golden_instance = next((x for x in dataset if x["instance_id"] == args.golden_example_id), None)
+        if not golden_instance:
+            logger.error(f"Golden example with ID {args.golden_example_id} not found")
+            raise ValueError(f"Golden example with ID {args.golden_example_id} not found")
     else:
         # Use the first two instances as golden examples
-        golden_instances = dataset[:2]
-        logger.info(f"Using instances {golden_instances[0]['instance_id']} and {golden_instances[1]['instance_id']} as golden examples")
+        golden_instance = dataset[0]
+        golden_instance_2 = dataset[1]
+        logger.info(f"Using instances {golden_instance['instance_id']} and {golden_instance_2['instance_id']} as golden examples")
     
     # Format golden examples
-    golden_examples = []
-    for instance in golden_instances:
-        golden_examples.append({
-            "problem": instance["text"],
-            "fixed_code": instance.get("patch", "")
-        })
+    golden_example = {
+        "problem": golden_instance["text"],
+        "fixed_code": golden_instance.get("patch", "")
+    }
+    
+    golden_example_2 = {
+        "problem": golden_instance_2["text"],
+        "fixed_code": golden_instance_2.get("patch", "")
+    }
     
     # Make golden examples available to generate_outputs_batch
-    generate_outputs_batch.golden_examples = golden_examples
+    generate_outputs_batch.golden_example = golden_example
+    generate_outputs_batch.golden_example_2 = golden_example_2
     
     # Check if flash attention 2 is available
     try:
